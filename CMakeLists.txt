@@ -206,9 +206,10 @@ map()
         key(events)
     end()
 end()
-ans(PLUGIN_CONFIG)
+ans(WPEFRAMEWORK_PLUGIN_CONFIG)
 
 json_write("${CMAKE_CURRENT_LIST_DIR}/${PLUGIN_NAME}.json" ${WPEFRAMEWORK_PLUGIN_CONFIG})
+
 install(
     FILES ${PLUGIN_NAME}.json
     DESTINATION ${CMAKE_INSTALL_PREFIX}/../etc/WPEFramework/plugins/

@@ -24,11 +24,11 @@ public:
     END_INTERFACE_MAP
 
     // IPower methods
-    virtual State GetState() const override {
+    virtual PCState GetState() const override {
         TRACE(Trace::Information, (_T("PowerImplementation::GetState() => %d"), _currentState));
         return (_currentState);
     }
-    virtual PCStatus SetState(const State state, const uint32 waitTime) override {
+    virtual PCStatus SetState(const PCState state, const uint32 waitTime) override {
         
         TRACE(Trace::Information, (_T("PowerImplementation::SetState(%d, %d) => PCSuccess"), state, waitTime));
 
@@ -41,7 +41,7 @@ public:
     }
 
 private:
-    State _currentState;
+    PCState _currentState;
 };
 
 // The essence of making the IPower interface available. This instantiates 

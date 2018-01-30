@@ -29,7 +29,7 @@ if(PC_WPEFRAMEWORK_FOUND)
         NAMES plugins/plugins.h
         HINTS ${PC_WPEFRAMEWORK_INCLUDEDIR} ${PC_WPEFRAMEWORK_INCLUDE_DIRS})
 
-    set(WPEFRAMEWORK_LIBS WPEFrameworkPlugins WPEFrameworkCore WPEFrameworkTracing WPEFrameworkProtocols WPEFrameworkRPC)
+    set(WPEFRAMEWORK_LIBS WPEFrameworkPlugins WPEFrameworkCore WPEFrameworkTracing WPEFrameworkProtocols)
     set(WPEFRAMEWORK_LIBRARY )
     foreach(LIB ${WPEFRAMEWORK_LIBS})
         find_library(WPEFRAMEWORK_LIBRARY_${LIB} NAMES ${LIB}
