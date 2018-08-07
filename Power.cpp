@@ -113,44 +113,45 @@ static Core::ProxyPoolType<Web::JSONBodyType<Power::Data> > jsonResponseFactory(
     result->ErrorCode = Web::STATUS_BAD_REQUEST;
     result->Message = "Unknown error";
 
-    if (_power != nullptr) {
-        if ((request.Verb == Web::Request::HTTP_GET) && ((index.Next() == true) && (index.Next() == true))) {
-            TRACE(Trace::Information, (string(_T("GET request"))));
-            result->ErrorCode = Web::STATUS_OK;
-            result->Message = "OK";
-            if (index.Remainder() == _T("GetPowerState")) {
-                TRACE(Trace::Information, (string(_T("GetPowerState"))));
-                Core::ProxyType<Web::JSONBodyType<Data> > response(jsonResponseFactory.Element());
-                response->PowerState = _power->GetState();
-                if (response->PowerState) {
-                    result->ContentType = Web::MIMETypes::MIME_JSON;
-                    result->Body(Core::proxy_cast<Web::IBody>(response));
-                } else {
-                    result->Message = "Invalid State";
-                }
-            } else {
-                result->ErrorCode = Web::STATUS_BAD_REQUEST;
-                result->Message = "Unknown error";
-            }
-        } else if ((request.Verb == Web::Request::HTTP_POST) && (index.Next() == true) && (index.Next() == true)) {
-            TRACE(Trace::Information, (string(_T("POST request"))));
-            result->ErrorCode = Web::STATUS_OK;
-            result->Message = "OK";
-            if (index.Remainder() == _T("SetPowerState")) {
-                TRACE(Trace::Information, (string(_T("SetPowerState "))));
-                uint32_t state = request.Body<const Data>()->PowerState.Value();
-                uint32_t timeout = request.Body<const Data>()->Timeout.Value();
-                Core::ProxyType<Web::JSONBodyType<Data> > response(jsonResponseFactory.Element());
-                response->Status = _power->SetState((Exchange::IPower::PCState)state, timeout);
+    ASSERT (_power != nullptr);
+
+    if ((request.Verb == Web::Request::HTTP_GET) && ((index.Next() == true) && (index.Next() == true))) {
+        TRACE(Trace::Information, (string(_T("GET request"))));
+        result->ErrorCode = Web::STATUS_OK;
+        result->Message = "OK";
+        if (index.Remainder() == _T("PowerState")) {
+            TRACE(Trace::Information, (string(_T("PowerState"))));
+            Core::ProxyType<Web::JSONBodyType<Data> > response(jsonResponseFactory.Element());
+            response->PowerState = _power->GetState();
+            if (response->PowerState) {
                 result->ContentType = Web::MIMETypes::MIME_JSON;
                 result->Body(Core::proxy_cast<Web::IBody>(response));
             } else {
-                result->ErrorCode = Web::STATUS_BAD_REQUEST;
-                result->Message = "Unknown error";
+                result->Message = "Invalid State";
             }
+        } else {
+            result->ErrorCode = Web::STATUS_BAD_REQUEST;
+            result->Message = "Unknown error";
         }
-   }
-   return result;
+    } else if ((request.Verb == Web::Request::HTTP_POST) && (index.Next() == true) && (index.Next() == true)) {
+        TRACE(Trace::Information, (string(_T("POST request"))));
+        result->ErrorCode = Web::STATUS_OK;
+        result->Message = "OK";
+        if (index.Remainder() == _T("PowerState")) {
+            TRACE(Trace::Information, (string(_T("PowerState "))));
+            uint32_t state = request.Body<const Data>()->PowerState.Value();
+            uint32_t timeout = request.Body<const Data>()->Timeout.Value();
+            Core::ProxyType<Web::JSONBodyType<Data> > response(jsonResponseFactory.Element());
+            response->Status = _power->SetState(static_cast<Exchange::IPower::PCState>(state), timeout);
+            result->ContentType = Web::MIMETypes::MIME_JSON;
+            result->Body(Core::proxy_cast<Web::IBody>(response));
+        } else {
+            result->ErrorCode = Web::STATUS_BAD_REQUEST;
+            result->Message = "Unknown error";
+        }
+    }
+
+    return result;
 }
 
 void Power::Deactivated(RPC::IRemoteProcess* process)
