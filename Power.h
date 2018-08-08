@@ -13,7 +13,7 @@ private:
     Power& operator=(const Power&) = delete;
 
     class Notification : 
-        public RPC::IRemoteProcess::INotification,
+        public PluginHost::IPlugin::INotification,
         public PluginHost::VirtualInput::Notifier {
 
     private:
@@ -32,24 +32,58 @@ private:
         }
 
     public:
-        virtual void Activated(RPC::IRemoteProcess*)
-        {
-        }
-        virtual void Deactivated(RPC::IRemoteProcess* process)
-        {
-            _parent.Deactivated(process);
-        }
-        virtual void Dispatch(uint32& keyCode)
+        virtual void Dispatch(uint32_t& keyCode)
         {
             _parent.KeyEvent(keyCode);
         }
- 
+
+        virtual void StateChange(PluginHost::IShell* plugin)
+        {
+            _parent.StateChange(plugin);
+        }
         BEGIN_INTERFACE_MAP(Notification)
-            INTERFACE_ENTRY(RPC::IRemoteProcess::INotification)
+            INTERFACE_ENTRY(PluginHost::IPlugin::INotification)
         END_INTERFACE_MAP
 
     private:
         Power& _parent;
+    };
+
+    class Entry
+    {
+    private:
+        Entry() = delete;
+        Entry& operator= (const Entry&) = delete;
+
+    public:
+        Entry(PluginHost::IShell* entry)
+            : _shell(entry)
+        {
+            ASSERT(_shell != nullptr);
+            _shell->AddRef();
+        }
+        Entry(const Entry& copy)
+            : _shell(copy._shell)
+        {
+            ASSERT(_shell != nullptr);
+            _shell->AddRef();
+        }
+        ~Entry()
+        {
+            _shell->Release();
+        }
+
+    public:
+       inline string Callsign() const {
+           return (_shell->Callsign());
+       }
+       PluginHost::IStateControl* QueryInterface()
+       {
+           return (_shell->QueryInterface<PluginHost::IStateControl>());
+       }
+
+    public:
+        PluginHost::IShell* _shell;
     };
 
     class Config : public Core::JSON::Container {
@@ -104,11 +138,12 @@ public:
 #pragma warning(disable : 4355)
 #endif
     Power()
-        : _skipURL(0)
+        : _adminLock()
+        , _skipURL(0)
         , _pid(0)
         , _power(nullptr)
         , _service(nullptr)
-        , _notification(this)
+        , _sink(this)
     {
     }
 #ifdef __WIN32__
@@ -154,14 +189,19 @@ public:
 
 private:
     void Deactivated(RPC::IRemoteProcess* process);
-    void KeyEvent(const uint32 keyCode);
+    void KeyEvent(const uint32_t keyCode);
+    void StateChange(PluginHost::IShell* plugin);
+    void ControlClients(Exchange::IPower::PCState state);
+    void ChangeClientState(PluginHost::IStateControl::state state, PluginHost::IStateControl::command command);
 
 private:
-    uint32 _skipURL;
-    uint32 _pid;
+    Core::CriticalSection _adminLock;
+    uint32_t _skipURL;
+    uint32_t _pid;
     PluginHost::IShell* _service;
+    std::map<string, Entry> _clients;
     Exchange::IPower* _power;
-    Core::Sink<Notification> _notification;
+    Core::Sink<Notification> _sink;
 };
 } //namespace Plugin
 } //namespace WPEFramework
