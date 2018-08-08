@@ -106,6 +106,7 @@ public:
     Power()
         : _skipURL(0)
         , _pid(0)
+        , _power(nullptr)
         , _service(nullptr)
         , _notification(this)
     {
