@@ -200,14 +200,11 @@ map()
     kv(locator lib${MODULE_NAME}${CMAKE_SHARED_LIBRARY_SUFFIX})
     kv(classname ${PLUGIN_NAME})
     kv(autostart true)
-    kv(outofprocess true)
-    key(configuration)
-    map()
-        key(events)
-    end()
+    kv(precondition ___array___)
 end()
 ans(WPEFRAMEWORK_PLUGIN_CONFIG)
 
+map_append(${WPEFRAMEWORK_PLUGIN_CONFIG} precondition Platform)
 json_write("${CMAKE_CURRENT_LIST_DIR}/${PLUGIN_NAME}.json" ${WPEFRAMEWORK_PLUGIN_CONFIG})
 
 install(

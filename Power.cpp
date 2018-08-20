@@ -20,28 +20,21 @@ static Core::ProxyPoolType<Web::JSONBodyType<Power::Data> > jsonResponseFactory(
     _service = service;
     _skipURL = static_cast<uint8_t>(_service->WebPrefix().length());
 
-    _service->AddRef();
-    // Register the Process::Notification stuff. The Remote process might die before we get a change to "register" the sink for these
-    // events !!!
-    _service->Register (&_sink);
-
     _power = Core::ServiceAdministrator::Instance().Instantiate<Exchange::IPower>(Core::Library(), _T("PowerImplementation"), static_cast<uint32_t>(~0));
 
     if (_power != nullptr) {
-        TRACE(Trace::Information, (_T("Successfully instantiated Power")));
         PluginHost::VirtualInput* keyHandler (PluginHost::InputHandler::KeyHandler());
 
         ASSERT (keyHandler != nullptr);
 
         keyHandler->Register(KEY_POWER, &_sink);
 
-    } else {
-        // Seems like it is not a succes, do not forget to remove the Process:Notification registration !
-        _service->Unregister(&_sink);
+        // Receive all plugin information on state changes.
+        _service->Register(&_sink);
 
+    } else {
         _service = nullptr;
 
-        TRACE(Trace::Error, (_T("Power could not be instantiated.")));
         message = _T("Power could not be instantiated.");
     }
 
@@ -53,35 +46,17 @@ static Core::ProxyPoolType<Web::JSONBodyType<Power::Data> > jsonResponseFactory(
     ASSERT(_service == service);
     ASSERT(_power != nullptr);
 
-    //Remove all registered clients
-    _clients.clear();
-
     // No need to monitor the Process::Notification anymore, we will kill it anyway.
     _service->Unregister(&_sink);
+
+    // Remove all registered clients
+    _clients.clear();
 
     // Also we are nolonger interested in the powerkey events, we have been requested to shut down our services!
     PluginHost::VirtualInput* keyHandler (PluginHost::InputHandler::KeyHandler());
 
     ASSERT (keyHandler != nullptr);
     keyHandler->Unregister(KEY_POWER, &_sink);
-
-    // Stop processing of the browser:
-    if (_power->Release() != Core::ERROR_DESTRUCTION_SUCCEEDED) {
-
-        ASSERT(_pid != 0);
-
-        TRACE(Trace::Error, (_T("OutOfProcess Plugin is not properly destructed. PID: %d"), _pid));
-
-        RPC::IRemoteProcess* process(_service->RemoteProcess(_pid));
-
-        // The process can disappear in the meantime...
-        if (process != nullptr) {
-
-            // But if it did not dissapear in the meantime, forcefully terminate it. Shoot to kill :-)
-            process->Terminate();
-            process->Release();
-        }
-    }
 
     _power = nullptr;
     _service = nullptr;
@@ -116,8 +91,8 @@ static Core::ProxyPoolType<Web::JSONBodyType<Power::Data> > jsonResponseFactory(
         TRACE(Trace::Information, (string(_T("GET request"))));
         result->ErrorCode = Web::STATUS_OK;
         result->Message = "OK";
-        if (index.Remainder() == _T("PowerState")) {
-            TRACE(Trace::Information, (string(_T("PowerState"))));
+        if (index.Remainder() == _T("State")) {
+            TRACE(Trace::Information, (string(_T("State"))));
             Core::ProxyType<Web::JSONBodyType<Data> > response(jsonResponseFactory.Element());
             response->PowerState = _power->GetState();
             if (response->PowerState) {
@@ -134,8 +109,8 @@ static Core::ProxyPoolType<Web::JSONBodyType<Power::Data> > jsonResponseFactory(
         TRACE(Trace::Information, (string(_T("POST request"))));
         result->ErrorCode = Web::STATUS_OK;
         result->Message = "OK";
-        if (index.Remainder() == _T("PowerState")) {
-            TRACE(Trace::Information, (string(_T("PowerState "))));
+        if (index.Remainder() == _T("State")) {
+            TRACE(Trace::Information, (string(_T("State "))));
             uint32_t timeout = request.Body<const Data>()->Timeout.Value();
             Exchange::IPower::PCState state = static_cast<Exchange::IPower::PCState>(request.Body<const Data>()->PowerState.Value());
 
@@ -154,16 +129,6 @@ static Core::ProxyPoolType<Web::JSONBodyType<Power::Data> > jsonResponseFactory(
     return result;
 }
 
-void Power::Deactivated(RPC::IRemoteProcess* process)
-{
-    // This can potentially be called on a socket thread, so the deactivation (wich in turn kills this object) must be done
-    // on a seperate thread. Also make sure this call-stack can be unwound before we are totally destructed.
-    if (_pid == process->Id()) {
-        ASSERT(_service != nullptr);
-        PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
-    }
-}
-
 void Power::KeyEvent(const uint32_t keyCode) {
 
     // We only subscribed for the KEY_POWER event so do not 
@@ -177,20 +142,27 @@ void Power::KeyEvent(const uint32_t keyCode) {
 
 void Power::StateChange(PluginHost::IShell* plugin)
 {
+    const string callsign (plugin->Callsign());
+
     _adminLock.Lock();
 
+    Clients::iterator index(_clients.find(callsign));
+
     if (plugin->State() == PluginHost::IShell::ACTIVATED) {
-        PluginHost::IStateControl* stateControl(plugin->QueryInterface<PluginHost::IStateControl>());
-        if (stateControl != nullptr) {
-            std::map<string, Entry>::iterator index(_clients.find(plugin->Callsign()));
-            if (index == _clients.end()) { // Add new plugin to the list
-                _clients.insert(std::pair<string, Entry>(plugin->Callsign(), Entry(plugin)));
-                TRACE(Trace::Information, (_T("%s plugin is add to power control list"), plugin->Callsign().c_str()));
+
+        if (index == _clients.end()) {
+            PluginHost::IStateControl* stateControl(plugin->QueryInterface<PluginHost::IStateControl>());
+
+            if (stateControl != nullptr) {
+                _clients.emplace(std::piecewise_construct,
+                                 std::forward_as_tuple(callsign),
+                                 std::forward_as_tuple(stateControl));
+                TRACE(Trace::Information, (_T("%s plugin is add to power control list"), callsign.c_str()));
+                stateControl->Release();
             }
-            stateControl->Release();
         }
     } else if (plugin->State() == PluginHost::IShell::DEACTIVATED) {
-        std::map<string, Entry>::iterator index(_clients.find(plugin->Callsign()));
+
         if (index != _clients.end()) { // Remove from the list, if it is already there
             _clients.erase(index);
             TRACE(Trace::Information, (_T("%s plugin is removed from power control list"), plugin->Callsign().c_str()));
@@ -202,39 +174,30 @@ void Power::StateChange(PluginHost::IShell* plugin)
 
 void Power::ControlClients(Exchange::IPower::PCState state)
 {
+    Clients::iterator client(_clients.begin());
+
     switch (state) {
     case Exchange::IPower::PCState::On:
-        TRACE(Trace::Information, (_T("Change state to RESUME for")));
-        ChangeClientState(PluginHost::IStateControl::RESUMED, PluginHost::IStateControl::RESUME);
-        //Nothing to be done
-        break;
+         TRACE(Trace::Information, (_T("Change state to RESUME for")));
+         while (client != _clients.end()) {
+             client->second.Resume();
+             client++;
+         }
+         //Nothing to be done
+         break;
     case Exchange::IPower::PCState::ActiveStandby:
     case Exchange::IPower::PCState::PassiveStandby:
     case Exchange::IPower::PCState::SuspendToRAM:
     case Exchange::IPower::PCState::Hibernate:
     case Exchange::IPower::PCState::PowerOff:
-       TRACE(Trace::Information, (_T("Change state to SUSPEND for")));
-       ChangeClientState(PluginHost::IStateControl::SUSPENDED, PluginHost::IStateControl::SUSPEND);
-       break;
+         while (client != _clients.end()) {
+             client->second.Suspend();
+             client++;
+         }
+         break;
     default:
         ASSERT(false);
         break;
-    }
-}
-
-void Power::ChangeClientState(PluginHost::IStateControl::state state, PluginHost::IStateControl::command command)
-{
-    std::map<string, Entry>::iterator client(_clients.begin());
-
-    // iterate in the loop and call suspend();
-    while (client != _clients.end()) {
-        PluginHost::IStateControl* stateControl(client->second.QueryInterface());
-        PluginHost::IStateControl::state currentState = stateControl->State();
-        if (currentState != state) {
-            TRACE(Trace::Information, (_T("-> %s "), client->second.Callsign().c_str()));
-            stateControl->Request(command);
-        }
-        client++;
     }
 }
 

@@ -36,14 +36,14 @@ public:
         Deinit();
     }
 
-    uint32 Worker();
+    uint32_t Worker();
     BEGIN_INTERFACE_MAP(PowerImplementation)
         INTERFACE_ENTRY(Exchange::IPower)
     END_INTERFACE_MAP
 
     // IPower methods
     virtual PCState GetState() const override;
-    virtual PCStatus SetState(const PCState, const uint32) override;
+    virtual PCStatus SetState(const PCState, const uint32_t) override;
     virtual void PowerKey() override;
 
 private:
@@ -61,7 +61,7 @@ private:
     bool _eventTriggered;
     bool _isSetState;
 
-    uint32 _timeout;
+    uint32_t _timeout;
     BKNI_EventHandle _event;
     BKNI_EventHandle _wakeupEvent;
     NEXUS_PlatformStandbyMode _mode;
@@ -93,7 +93,7 @@ extern "C" {
 
 using namespace WPEFramework;
 
-uint32 PowerImplementation::Worker()
+uint32_t PowerImplementation::Worker()
 {
     while (IsRunning() == true) {
         _lock.Lock();
@@ -298,7 +298,7 @@ void PowerImplementation::SetWakeEvent()
     }
 }
 
-Exchange::IPower::PCStatus PowerImplementation::SetState(const Exchange::IPower::PCState state, const uint32 timeout)
+Exchange::IPower::PCStatus PowerImplementation::SetState(const Exchange::IPower::PCState state, const uint32_t timeout)
 {
     TRACE(Trace::Information, (_T("SetState state is [%d], Timeout is : [%d]"), state,timeout));
     PCStatus status = PCSuccess;

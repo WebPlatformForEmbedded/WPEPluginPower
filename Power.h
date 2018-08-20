@@ -53,17 +53,13 @@ private:
     {
     private:
         Entry() = delete;
+        Entry(const Entry& copy) = delete;
         Entry& operator= (const Entry&) = delete;
 
     public:
-        Entry(PluginHost::IShell* entry)
+        Entry(PluginHost::IStateControl* entry)
             : _shell(entry)
-        {
-            ASSERT(_shell != nullptr);
-            _shell->AddRef();
-        }
-        Entry(const Entry& copy)
-            : _shell(copy._shell)
+            , _lastStateResumed(false)
         {
             ASSERT(_shell != nullptr);
             _shell->AddRef();
@@ -74,16 +70,28 @@ private:
         }
 
     public:
-       inline string Callsign() const {
-           return (_shell->Callsign());
-       }
-       PluginHost::IStateControl* QueryInterface()
+       bool Suspend()
        {
-           return (_shell->QueryInterface<PluginHost::IStateControl>());
+           bool succeeded (true);
+           if (_shell->State() == PluginHost::IStateControl::RESUMED) {
+               _lastStateResumed = true;
+               succeeded = (_shell->Request(PluginHost::IStateControl::SUSPEND) == Core::ERROR_NONE);
+           }
+           return (succeeded);
+       }
+       bool Resume()
+       {
+           bool succeeded (true);
+           if (_lastStateResumed == true) {
+               _lastStateResumed = false;
+               succeeded = (_shell->Request(PluginHost::IStateControl::RESUME) == Core::ERROR_NONE);
+           }
+           return (succeeded);
        }
 
     public:
-        PluginHost::IShell* _shell;
+        PluginHost::IStateControl* _shell;
+        bool _lastStateResumed;
     };
 
     class Config : public Core::JSON::Container {
@@ -105,6 +113,8 @@ private:
     public:
         Core::JSON::Boolean OutOfProcess;
     };
+
+    typedef std::map<const string, Entry> Clients;
 
 public:
     class Data : public Core::JSON::Container {
@@ -188,18 +198,16 @@ public:
     PluginHost::IShell* GetService() { return _service; }
 
 private:
-    void Deactivated(RPC::IRemoteProcess* process);
     void KeyEvent(const uint32_t keyCode);
     void StateChange(PluginHost::IShell* plugin);
     void ControlClients(Exchange::IPower::PCState state);
-    void ChangeClientState(PluginHost::IStateControl::state state, PluginHost::IStateControl::command command);
 
 private:
     Core::CriticalSection _adminLock;
     uint32_t _skipURL;
     uint32_t _pid;
     PluginHost::IShell* _service;
-    std::map<string, Entry> _clients;
+    Clients  _clients;
     Exchange::IPower* _power;
     Core::Sink<Notification> _sink;
 };
