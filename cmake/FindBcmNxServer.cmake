@@ -35,8 +35,9 @@ find_library(LIBNEXUS_LIBRARY NAMES nexus)
 
 find_library(LIBNXCLIENT_LIBRARY NAMES nxclient)
 
-find_path(LIBNXSERVER_INCLUDE_DIR refsw/nxserverlib.h
+find_path(LIBNXSERVER_INCLUDE_DIR nxserverlib.h
         PATHS usr/include/
+        PATH_SUFFIXES refsw
         )
 
 find_path(NXREFSW_INCLUDE_PATH nexus_config.h
@@ -44,8 +45,9 @@ find_path(NXREFSW_INCLUDE_PATH nexus_config.h
         PATH_SUFFIXES refsw
         )
 
-find_path(LIBNXCLIENT_INCLUDE_DIR refsw/nxclient.h
+find_path(LIBNXCLIENT_INCLUDE_DIR nxclient.h
         PATHS usr/include/
+        PATH_SUFFIXES refsw
         )
 
 set(LIBNXSERVER_LIBRARIES ${LIBNXSERVER_LIBRARY} ${LIBNEXUS_LIBRARY} ${LIBNXCLIENT_LIBRARY})

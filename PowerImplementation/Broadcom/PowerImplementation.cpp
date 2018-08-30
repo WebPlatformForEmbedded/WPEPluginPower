@@ -1,10 +1,10 @@
 #include "Module.h"
 #include <interfaces/IPower.h>
 
-#include <refsw/nexus_config.h>
-#include <refsw/nexus_platform.h>
-#include <refsw/nexus_platform_standby.h>
-#include <refsw/nxclient.h>
+#include <nexus_config.h>
+#include <nexus_platform.h>
+#include <nexus_platform_standby.h>
+#include <nxclient.h>
 
 namespace WPEFramework {
 
@@ -87,7 +87,7 @@ SERVICE_REGISTRATION(PowerImplementation, 1, 0);
 
 #ifdef __cplusplus
 extern "C" {
-#include <refsw/pmlib.h>
+#include <pmlib.h>
 }
 #endif
 
