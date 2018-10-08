@@ -17,6 +17,38 @@ private:
     PowerImplementation& operator=(const PowerImplementation&) = delete;
 
 public:
+    class Config : public Core::JSON::Container {
+    private:
+        Config (const Config&) = delete;
+        Config& operator=(const Config&) = delete;
+
+    public:
+        enum gpiotype {
+            STANDARD = NEXUS_GpioType_eStandard,
+            SPECIAL = NEXUS_GpioType_eSpecial,
+            UNUSED = NEXUS_GpioType_eTvMicro,
+            AON_STANDARD = NEXUS_GpioType_eAonStandard,
+            AON_SPECIAL = NEXUS_GpioType_eAonSpecial
+        };
+
+    public:
+        Config ()
+            : Core::JSON::Container()
+            , GPIOPin(0)
+            , GPIOType(AON_STANDARD)
+        {
+            Add(_T("gpiopin"), &GPIOPin);
+            Add(_T("gpiotype"), &GPIOType);
+        }
+        ~Config()
+        {
+        }
+
+        Core::JSON::DecUInt32 GPIOPin;
+        Core::JSON::EnumType<gpiotype> GPIOType;
+    };
+
+public:
     PowerImplementation ()
         : _pmContext(nullptr)
         , _event(nullptr)
@@ -25,6 +57,9 @@ public:
         , _coldBoot(false)
         , _eventTriggered(false)
         , _timeout(0)
+        , _gpioHandle(nullptr)
+        , _gpioType(NEXUS_GpioType_eAonStandard)
+        , _gpioPin(0)
     {
         TRACE(Trace::Information, (_T("BcmPowerManager()")));
         Init();
@@ -45,6 +80,7 @@ public:
     virtual PCState GetState() const override;
     virtual PCStatus SetState(const PCState, const uint32_t) override;
     virtual void PowerKey() override;
+    virtual void Configure(const string& settings) override;
 
 private:
     void Init();
@@ -54,6 +90,7 @@ private:
     PCStatus SetStandbyState();
     void SetWakeEvent();
     void PrintWakeup();
+    static void gpioInterrupt(void *context, int param);
 
 private:
     void* _pmContext;
@@ -65,6 +102,10 @@ private:
     BKNI_EventHandle _event;
     BKNI_EventHandle _wakeupEvent;
     NEXUS_PlatformStandbyMode _mode;
+    NEXUS_GpioHandle _gpioHandle;
+    NEXUS_GpioType _gpioType;
+    uint32_t _gpioPin;
+    
     Core::CriticalSection _lock;
 };
 
@@ -72,6 +113,16 @@ private:
 // an object that can be created from the outside of the library by looking
 // for the PowerImplementation class name, that realizes the IPower interface.
 SERVICE_REGISTRATION(PowerImplementation, 1, 0);
+
+ENUM_CONVERSION_BEGIN(PowerImplementation::Config::gpiotype)
+
+    { PowerImplementation::Config::STANDARD,  _TXT("Standard")  },
+    { PowerImplementation::Config::SPECIAL, _TXT("Special") },
+    { PowerImplementation::Config::UNUSED, _TXT("Unused") },
+    { PowerImplementation::Config::AON_STANDARD,   _TXT("AONStandard")   },
+    { PowerImplementation::Config::AON_SPECIAL,   _TXT("AONSpecial")   },
+
+ENUM_CONVERSION_END(PowerImplementation::Config::gpiotype);
 
 }
 
@@ -136,6 +187,18 @@ void PowerImplementation::Init()
         _pmContext = brcm_pm_init();
 
         NxClient_UnregisterAcknowledgeStandby(NxClient_RegisterAcknowledgeStandby());
+        
+        if (_gpioPin != 0) {
+            NEXUS_GpioSettings gpioSettings;
+            TRACE(Trace::Information, (_T("Enabling wakeup GPIO: %d-%d"),_gpioType, _gpioPin));
+
+            NEXUS_Gpio_GetDefaultSettings(NEXUS_GpioType_eAonStandard, &gpioSettings);
+            gpioSettings.mode = NEXUS_GpioMode_eInput;
+            gpioSettings.interruptMode = NEXUS_GpioInterrupt_eRisingEdge;
+            gpioSettings.interrupt.callback = gpioInterrupt;
+            gpioSettings.interrupt.context = this;
+            _gpioHandle = NEXUS_Gpio_Open(_gpioType, _gpioPin, &gpioSettings);
+        }
     }
 }
 
@@ -151,6 +214,10 @@ void PowerImplementation::Deinit()
     }
     if (_event) {
         BKNI_DestroyEvent(_event);
+    }
+
+    if (_gpioHandle) {
+        NEXUS_Gpio_Close(_gpioHandle);
     }
 
     NxClient_Uninit();
@@ -169,6 +236,21 @@ void PowerImplementation::PowerKey()
     TRACE(Trace::Information, (_T("KeyEventHandler keycode.")));
     _eventTriggered = true;
     SetWakeEvent();
+}
+
+void PowerImplementation::Configure(const string& settings)
+{
+    TRACE(Trace::Information, (_T("Configure()")));
+
+    Config config; 
+    config.FromString(settings);
+
+    if (config.GPIOPin.IsSet() == true) {
+        _gpioPin = config.GPIOPin.Value();
+        if (config.GPIOType.IsSet() == true) {
+            _gpioType = static_cast<NEXUS_GpioType>(config.GPIOType.Value());
+        }
+    }
 }
 
 void PowerImplementation::PrintWakeup()
@@ -199,6 +281,21 @@ void PowerImplementation::PrintWakeup()
         standbyStatus.status.wakeupStatus.gpio,
         standbyStatus.status.wakeupStatus.keypad,
         standbyStatus.status.wakeupStatus.timeout));
+}
+
+void PowerImplementation::gpioInterrupt(void *context, int param)
+{
+    PowerImplementation* power = static_cast<PowerImplementation*>(context);
+
+    power->SetWakeEvent();
+    power->_mode = NEXUS_PlatformStandbyMode_eOn;
+    BKNI_SetEvent(power->_event);
+    power->_eventTriggered = false;
+
+    if (power->_gpioHandle)
+    {
+        NEXUS_Gpio_ClearInterrupt(power->_gpioHandle);
+    }
 }
 
 Exchange::IPower::PCStatus PowerImplementation::SetStandbyState()

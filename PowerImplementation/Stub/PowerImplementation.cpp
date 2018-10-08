@@ -39,6 +39,9 @@ public:
     virtual void PowerKey() override {
         TRACE(Trace::Information, (_T("PowerImplementation::PowerKey()")));
     }
+    virtual void Configure(const string& settings) {
+        TRACE(Trace::Information, (_T("PowerImplementation::Configure()")));
+    }
 
 private:
     PCState _currentState;

@@ -31,6 +31,8 @@ static Core::ProxyPoolType<Web::JSONBodyType<Power::Data> > jsonResponseFactory(
 
         // Receive all plugin information on state changes.
         _service->Register(&_sink);
+        
+        _power->Configure(_service->ConfigLine());
 
     } else {
         _service = nullptr;
